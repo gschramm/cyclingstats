@@ -17,7 +17,7 @@ from bokeh.layouts import gridplot
 #-------------------------------------------------------------------------------------------
 
 def bokeh_cycling_stats(df, output_html_file):
-  output_file(output_html_file)
+  output_file(output_html_file, title = 'cycling stats')
   
   weekly_stats  = df.groupby('week')[['distance [km]', 'ascent [km]']].sum()
   monthly_stats = df.groupby('month')[['distance [km]', 'ascent [km]']].sum()
