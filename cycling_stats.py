@@ -11,7 +11,57 @@ import fitparse
 
 from bokeh.io import output_file, show
 from bokeh.plotting import figure, ColumnDataSource
+from bokeh.models import Band
 from bokeh.layouts import gridplot
+from bokeh.palettes import Plasma11
+from bokeh.transform import linear_cmap
+
+#-------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------
+
+def linreg(x,y):
+  """ linear regression with estimate of 95% conf interval
+      https://tomholderness.wordpress.com/2013/01/10/confidence_intervals/
+  """
+
+  xx = x.copy()
+  yy = y.copy()
+
+  for i in range(2):
+    # fit a curve to the data using a least squares 1st order polynomial fit
+    z   = np.polyfit(xx,yy,1)
+    p   = np.poly1d(z)
+    fit = p(xx)
+    
+    # predict y values of origional data using the fit
+    p_y = z[0] * xx + z[1]
+    
+    # calculate the y-error (residuals)
+    y_err = yy - p_y
+
+    # remove outliers
+    inds = np.where(np.abs(y_err) < np.abs(y_err).mean() + 3*np.abs(y_err).std())
+    xx = x[inds]
+    yy = y[inds]
+ 
+  # predict y values of origional data using the fit
+  p_y   = z[0] * x + z[1]
+  y_err = y - p_y
+
+  # now calculate confidence intervals for new test x-series
+  mean_x = np.mean(x[inds])                # mean of x
+  n = len(x)                               # number of samples in origional fit
+  t = 2.31                                 # appropriate t value (where n=9, two tailed 95%)
+  s_err = np.sum(np.power(y_err[inds],2))  # sum of the squares of the residuals
+  
+  confs = t * np.sqrt((s_err/(n-2))*(1.0/n + (np.power((x-mean_x),2)/
+              ((np.sum(np.power(x,2)))-n*(np.power(mean_x,2))))))
+  
+  # get lower and upper confidence limits based on predicted y and confidence intervals
+  lower = p_y - 2*abs(confs)
+  upper = p_y + 2*abs(confs)
+
+  return p_y, lower, upper
 
 #-------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------
@@ -21,6 +71,15 @@ def bokeh_cycling_stats(df, output_html_file):
  
   # calculate gradient for each ride
   df['grad'] = df['ascent [km]'] / df['distance [km]']
+
+  # do regression
+  xreg  = df['grad'].values
+  yreg  = df['avg speed [km/h]'].values
+  isort = np.argsort(xreg)
+  xreg  = xreg[isort]
+  yreg  = yreg[isort]
+  
+  reg, low, up = linreg(xreg, yreg)
 
   # date for tooltips
   df['date'] = [x.date().strftime("%y-%m-%d") for x in df.datetime]
@@ -80,9 +139,15 @@ def bokeh_cycling_stats(df, output_html_file):
               tooltips = [('distance [km]', "@{distance [km]}"),('ascent [km]', "@{ascent [km]}"),
                           ('moving time [min]', "@{moving time [min]}"),
                           ('avg speed [km/h]',"@{avg speed [km/h]}"), ('date',"@{date}")])
-  p33.scatter('grad', 'avg speed [km/h]', source = df, size = 8)
+  #p33.line(xreg, reg)
+  p33.line(xreg, low, color = 'gray')
+  p33.line(xreg, up, color = 'gray')
+  p33.scatter('grad', 'avg speed [km/h]', source = df, size = 8, 
+               color = linear_cmap(field_name = 'distance [km]', 
+                                   palette = Plasma11, 
+                                   low = df['distance [km]'].min(), 
+                                   high = 1.1*df['distance [km]'].max()))
 
-  
   # group all figures in a grid
   grid = gridplot([[p11, p21, p31], [p12, p22, p32], [p13, p23, p33]], 
                   plot_width = 600, plot_height = 300)
@@ -227,5 +292,5 @@ if __name__ == '__main__':
 
   bokeh_cycling_stats(df, 'cycling_stats.html')
 
-  fig = plot_cycling_stats(df)
-  fig.savefig(os.path.splitext(df_file)[0] + '.pdf')
+  #fig = plot_cycling_stats(df)
+  #fig.savefig(os.path.splitext(df_file)[0] + '.pdf')
