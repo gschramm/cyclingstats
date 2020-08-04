@@ -22,6 +22,9 @@ def bokeh_cycling_stats(df, output_html_file):
   # calculate gradient for each ride
   df['grad'] = df['ascent [km]'] / df['distance [km]']
 
+  # date for tooltips
+  df['date'] = [x.date().strftime("%y-%m-%d") for x in df.datetime]
+
   # plot weekly, monthly, yearly summary
   weekly_stats  = df.groupby('week')[['distance [km]', 'ascent [km]']].sum()
   monthly_stats = df.groupby('month')[['distance [km]', 'ascent [km]']].sum()
@@ -62,13 +65,13 @@ def bokeh_cycling_stats(df, output_html_file):
 
   # plot histograms about rides
   dist_histo = np.histogram(df["distance [km]"], 
-                            bins = np.arange(np.ceil(df['distance [km]'].max()/10) + 1) * 10)
+                            bins = np.arange(np.ceil(df['distance [km]'].max()/10) + 2) * 10 - 5)
   p31 = figure(title = 'ride distance [km] histogram')
   p31.quad(top = dist_histo[0], bottom = 0, left = dist_histo[1][:-1], right = dist_histo[1][1:],
            fill_color="darkseagreen", line_width = 0)
 
   mt_histo = np.histogram(df["moving time [min]"], 
-                            bins = np.arange(np.ceil(df['moving time [min]'].max()/20) + 1) * 20)
+                            bins = np.arange(np.ceil(df['moving time [min]'].max()/20) + 2) * 20 - 10)
   p32 = figure(title = 'ride moving time [min] histogram')
   p32.quad(top = mt_histo[0], bottom = 0, left = mt_histo[1][:-1], right = mt_histo[1][1:],
            fill_color="darkseagreen", line_width = 0)
@@ -76,8 +79,8 @@ def bokeh_cycling_stats(df, output_html_file):
   p33 = figure(title = 'ride avg speed [km/h] vs (ascent / distance)',
               tooltips = [('distance [km]', "@{distance [km]}"),('ascent [km]', "@{ascent [km]}"),
                           ('moving time [min]', "@{moving time [min]}"),
-                          ('avg speed [km/h]',"@{avg speed [km/h]}")])
-  p33.scatter('grad', 'avg speed [km/h]', source = df)
+                          ('avg speed [km/h]',"@{avg speed [km/h]}"), ('date',"@{date}")])
+  p33.scatter('grad', 'avg speed [km/h]', source = df, size = 8)
 
   
   # group all figures in a grid
