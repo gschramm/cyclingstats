@@ -17,8 +17,12 @@ from bokeh.layouts import gridplot
 #-------------------------------------------------------------------------------------------
 
 def bokeh_cycling_stats(df, output_html_file):
-  output_file(output_html_file, title = 'cycling stats')
-  
+  output_file(output_html_file, title = 'cycling stats ' + df.datetime[-1].strftime('%Y-%m-%d'))
+ 
+  # calculate gradient for each ride
+  df['grad'] = df['ascent [km]'] / df['distance [km]']
+
+  # plot weekly, monthly, yearly summary
   weekly_stats  = df.groupby('week')[['distance [km]', 'ascent [km]']].sum()
   monthly_stats = df.groupby('month')[['distance [km]', 'ascent [km]']].sum()
   yearly_stats  = df.groupby('year')[['distance [km]', 'ascent [km]']].sum()
@@ -55,7 +59,30 @@ def bokeh_cycling_stats(df, output_html_file):
   p23.vbar(x = 'cat', top = 'ascent [km]', width = 0.7, source = yearly_stats, 
            fill_color = 'darkorange', line_width = 0)
 
-  grid = gridplot([[p11, p21], [p12, p22], [p13,p23]], plot_width = 600, plot_height = 300)
+
+  # plot histograms about rides
+  dist_histo = np.histogram(df["distance [km]"], 
+                            bins = np.arange(np.ceil(df['distance [km]'].max()/10) + 1) * 10)
+  p31 = figure(title = 'ride distance [km] histogram')
+  p31.quad(top = dist_histo[0], bottom = 0, left = dist_histo[1][:-1], right = dist_histo[1][1:],
+           fill_color="darkseagreen", line_width = 0)
+
+  mt_histo = np.histogram(df["moving time [min]"], 
+                            bins = np.arange(np.ceil(df['moving time [min]'].max()/20) + 1) * 20)
+  p32 = figure(title = 'ride moving time [min] histogram')
+  p32.quad(top = mt_histo[0], bottom = 0, left = mt_histo[1][:-1], right = mt_histo[1][1:],
+           fill_color="darkseagreen", line_width = 0)
+
+  p33 = figure(title = 'ride avg speed [km/h] vs (ascent / distance)',
+              tooltips = [('distance [km]', "@{distance [km]}"),('ascent [km]', "@{ascent [km]}"),
+                          ('moving time [min]', "@{moving time [min]}"),
+                          ('avg speed [km/h]',"@{avg speed [km/h]}")])
+  p33.scatter('grad', 'avg speed [km/h]', source = df)
+
+  
+  # group all figures in a grid
+  grid = gridplot([[p11, p21, p31], [p12, p22, p32], [p13, p23, p33]], 
+                  plot_width = 600, plot_height = 300)
 
   show(grid)
 
