@@ -46,6 +46,8 @@ def bokeh_cycling_stats(df, output_html_file):
   
   grid = gridplot([[p11, p21], [p12, p22]], plot_width = 800, plot_height = 400)
 
+  show(grid)
+
 #-------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------
 def plot_cycling_stats(df):
@@ -182,7 +184,7 @@ if __name__ == '__main__':
   df_file = os.path.join(datapath,config['default']['df_file'])
   df = parse_fit_files(datapath, df_file)
 
-  bokeh_cycling_stats(df, 'stats.html')
+  bokeh_cycling_stats(df, 'cycling_stats.html')
 
   fig = plot_cycling_stats(df)
   fig.savefig(os.path.splitext(df_file)[0] + '.pdf')
