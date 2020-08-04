@@ -25,26 +25,37 @@ def bokeh_cycling_stats(df, output_html_file):
   
   weekly_stats['cat']  = [str(x) for x in weekly_stats.index.values]
   monthly_stats['cat'] = [str(x) for x in monthly_stats.index.values]
+  yearly_stats['cat']  = [str(x) for x in yearly_stats.index.values]
   
   p11 = figure(title ="weekly distance [km]", x_range = weekly_stats['cat'],
               tooltips = [('week', "@{week}"),('distance [km]', "@{distance [km]}")])
-  p11.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = weekly_stats)
+  p11.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = weekly_stats, line_width = 0)
   
   p12 = figure(title ="monthly distance [km]", x_range = monthly_stats['cat'],
               tooltips = [('month', "@{month}"),('distance [km]', "@{distance [km]}")])
-  p12.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = monthly_stats)
-  
+  p12.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = monthly_stats, line_width = 0)
+
+  p13 = figure(title ="yearly distance [km]", x_range = yearly_stats['cat'],
+              tooltips = [('year', "@{year}"),('distance [km]', "@{distance [km]}")])
+  p13.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = yearly_stats, line_width = 0)
+
+
   p21 = figure(title ="weekly ascent [km]", x_range = weekly_stats['cat'],
-              tooltips = [('week', "@{week}"),('distance [km]', "@{ascent [km]}")])
+              tooltips = [('week', "@{week}"),('ascent [km]', "@{ascent [km]}")])
   p21.vbar(x = 'cat', top = 'ascent [km]', width = 0.7, source = weekly_stats, 
-           fill_color = 'gray')
+           fill_color = 'darkorange', line_width = 0)
   
   p22 = figure(title ="monthly ascent [km]", x_range = monthly_stats['cat'],
-              tooltips = [('month', "@{month}"),('distance [km]', "@{ascent [km]}")])
+              tooltips = [('month', "@{month}"),('ascent [km]', "@{ascent [km]}")])
   p22.vbar(x = 'cat', top = 'ascent [km]', width = 0.7, source = monthly_stats, 
-           fill_color = 'gray')
-  
-  grid = gridplot([[p11, p21], [p12, p22]], plot_width = 800, plot_height = 400)
+           fill_color = 'darkorange', line_width = 0)
+
+  p23 = figure(title ="yearly ascent [km]", x_range = yearly_stats['cat'],
+              tooltips = [('year', "@{year}"),('ascent [km]', "@{ascent [km]}")])
+  p23.vbar(x = 'cat', top = 'ascent [km]', width = 0.7, source = yearly_stats, 
+           fill_color = 'darkorange', line_width = 0)
+
+  grid = gridplot([[p11, p21], [p12, p22], [p13,p23]], plot_width = 600, plot_height = 300)
 
   show(grid)
 
@@ -188,4 +199,3 @@ if __name__ == '__main__':
 
   fig = plot_cycling_stats(df)
   fig.savefig(os.path.splitext(df_file)[0] + '.pdf')
-  py.show()
