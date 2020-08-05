@@ -149,8 +149,8 @@ def bokeh_cycling_stats(df, output_html_file):
                                    high = 1.1*df['distance [km]'].max()))
 
   # group all figures in a grid
-  grid = gridplot([[p11, p21, p31], [p12, p22, p32], [p13, p23, p33]], 
-                  plot_width = 600, plot_height = 300)
+  grid = gridplot([[p11, p21], [p12, p22], [p13, p23], [p31, p32], [p33, None]], 
+                  plot_width = 600, plot_height = 250, sizing_mode = 'scale_width')
 
   show(grid)
 
