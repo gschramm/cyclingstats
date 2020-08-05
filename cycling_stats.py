@@ -94,8 +94,7 @@ def bokeh_cycling_stats(df, output_html_file):
   yearly_stats['cat']  = [str(x) for x in yearly_stats.index.values]
   
   p11 = figure(title ="weekly distance [km]", x_range = weekly_stats['cat'],
-              tooltips = [('week', "@{week}"),('distance [km]', "@{distance [km]}")],
-              tools="box_zoom,reset")
+              tooltips = [('week', "@{week}"),('distance [km]', "@{distance [km]}")])
   p11.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = weekly_stats, line_width = 0)
   
   p12 = figure(title ="monthly distance [km]", x_range = monthly_stats['cat'],
@@ -149,10 +148,14 @@ def bokeh_cycling_stats(df, output_html_file):
                                    low = df['distance [km]'].min(), 
                                    high = 1.1*df['distance [km]'].max()))
 
-  # group all figures in a grid
-  grid = gridplot([[p11, p21], [p12, p22], [p13, p23], [p31, p32], [p33, None]], 
-                  plot_width = 600, plot_height = 250, sizing_mode = 'scale_both')
+  for fig in [p11, p21, p12, p22, p13, p23, p31, p32, p33]:
+    fig.toolbar.active_drag = None
+    fig.toolbar.active_scroll = None
+    fig.toolbar.active_tap = None
 
+  # group all figures in a grid
+  grid = gridplot([[p11, p21], [p12, p22], [p13, p23], [p31, p32], [p33, None]], merge_tools = False, 
+                  plot_width = 600, plot_height = 250, sizing_mode = 'scale_both')
   show(grid)
 
 #-------------------------------------------------------------------------------------------
@@ -293,5 +296,5 @@ if __name__ == '__main__':
 
   bokeh_cycling_stats(df, 'cycling_stats.html')
 
-  #fig = plot_cycling_stats(df)
-  #fig.savefig(os.path.splitext(df_file)[0] + '.pdf')
+  fig = plot_cycling_stats(df)
+  fig.savefig(os.path.splitext(df_file)[0] + '.pdf')
