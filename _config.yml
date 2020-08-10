@@ -1,4 +1,6 @@
 theme: jekyll-theme-cayman
 plugins: 
   - jekyll-redirect-from
+whitelist:
+  - jekyll-redirect-from
 redirect_to: https://gschramm.github.io/cyclingstats/cycling_stats.html
