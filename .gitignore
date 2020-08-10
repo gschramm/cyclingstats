@@ -130,3 +130,5 @@ dmypy.json
 
 # user stuff
 config.ini
+.jekyll-cache/
+_site/
