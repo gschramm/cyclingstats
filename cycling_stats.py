@@ -4,6 +4,8 @@ import pandas as pd
 import matplotlib
 import matplotlib.pyplot as py
 import configparser
+import hashlib
+import pathlib
 from glob import glob
 
 import geopy.distance
@@ -191,7 +193,7 @@ def plot_cycling_stats(df):
 #-------------------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------------------
 
-def parse_fit_files(data_path,df_file):
+def parse_fit_files(data_path, df_file, salt):
   fnames = sorted(glob(os.path.join (data_path,'20??','*.fit')) + 
                   glob(os.path.join (data_path,'20??','*.FIT')))
   
@@ -206,7 +208,7 @@ def parse_fit_files(data_path,df_file):
   
   for fname in fnames:
     print(fname)
-    index = os.path.splitext(os.path.basename(fname))[0]
+    index = hashlib.sha256(pathlib.Path(fname).read_bytes() + salt.encode('utf-8')).hexdigest()[:8]
   
     if not index in df.index:
       fitfile = fitparse.FitFile(fname)
@@ -291,10 +293,8 @@ if __name__ == '__main__':
   config = configparser.ConfigParser()
   config.read('config.ini')
   datapath = config['default']['datapath']
-  df_file = os.path.join(datapath,config['default']['df_file'])
-  df = parse_fit_files(datapath, df_file)
+  df_file  = config['default']['df_file']
+  salt     = config['default']['salt']
+  df = parse_fit_files(datapath, df_file, salt)
 
   bokeh_cycling_stats(df, 'cycling_stats.html')
-
-  fig = plot_cycling_stats(df)
-  fig.savefig(os.path.splitext(df_file)[0] + '.pdf')
