@@ -91,10 +91,26 @@ def bokeh_cycling_stats(df, output_html_file):
   monthly_stats = df.groupby('month')[['distance [km]', 'ascent [km]']].sum()
   yearly_stats  = df.groupby('year')[['distance [km]', 'ascent [km]']].sum()
   
+
+  #--- add entry for weeks and months without trips
+  new_week_index  = []
+  new_month_index = []
+
+  for year in [str(x)[2:] for x in yearly_stats.index.values]:
+    year_weeks  = [int(x[3:]) for x in weekly_stats.index.values if x.startswith(year)]
+    year_months = [int(x[3:]) for x in monthly_stats.index.values if x.startswith(year)]
+
+    new_week_index += [year + '-' + str(x).zfill(2) for x in range(min(year_weeks), max(year_weeks) + 1)]
+    new_month_index += [year + '-' + str(x).zfill(2) for x in range(min(year_months), max(year_months) + 1)]
+
+  weekly_stats  = weekly_stats.reindex(new_week_index, fill_value = 0)
+  monthly_stats = monthly_stats.reindex(new_month_index, fill_value = 0)
+  #---
+
   weekly_stats['cat']  = [str(x) for x in weekly_stats.index.values]
   monthly_stats['cat'] = [str(x) for x in monthly_stats.index.values]
   yearly_stats['cat']  = [str(x) for x in yearly_stats.index.values]
-  
+
   p11 = figure(title ="weekly distance [km]", x_range = weekly_stats['cat'],
               tooltips = [('week', "@{week}"),('distance [km]', "@{distance [km]}")])
   p11.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = weekly_stats, line_width = 0)
