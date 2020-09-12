@@ -7,6 +7,7 @@ import configparser
 import hashlib
 import pathlib
 from glob import glob
+from datetime import date
 
 import geopy.distance
 import fitparse
@@ -96,12 +97,40 @@ def bokeh_cycling_stats(df, output_html_file):
   new_week_index  = []
   new_month_index = []
 
-  for year in [str(x)[2:] for x in yearly_stats.index.values]:
+  for iyear, year in enumerate([str(x)[2:] for x in yearly_stats.index.values]):
+
     year_weeks  = [int(x[3:]) for x in weekly_stats.index.values if x.startswith(year)]
     year_months = [int(x[3:]) for x in monthly_stats.index.values if x.startswith(year)]
 
-    new_week_index += [year + '-' + str(x).zfill(2) for x in range(min(year_weeks), max(year_weeks) + 1)]
-    new_month_index += [year + '-' + str(x).zfill(2) for x in range(min(year_months), max(year_months) + 1)]
+    if yearly_stats.shape[0] == 1:
+      # we have only one year
+      minweek = min(year_weeks)
+      maxweek = max(year_weeks)
+      minmonth = min(year_months)
+      maxmonth = max(year_months)
+    else:
+      # multiple years
+      if (iyear == 0):
+        # first year in stats
+        minweek = min(year_weeks)
+        maxweek = date(2000 + int(year), 12, 28).isocalendar()[1]
+        minmonth = min(year_months)
+        maxmonth = 12
+      elif (iyear == (yearly_stats.shape[0] - 1)):
+        # last year in stats
+        minweek = 1
+        maxweek = max(year_weeks)
+        minmonth = 1
+        maxmonth = max(year_months)
+      else:
+        # middle yeats
+        minweek = 1
+        maxweek = date(2000 + int(year), 12, 28).isocalendar()[1]
+        minmonth = 1
+        maxmonth = 12
+
+    new_week_index += [year + '-' + str(x).zfill(2) for x in range(minweek, maxweek + 1)]
+    new_month_index += [year + '-' + str(x).zfill(2) for x in range(minmonth, maxmonth + 1)]
 
   weekly_stats  = weekly_stats.reindex(new_week_index, fill_value = 0)
   monthly_stats = monthly_stats.reindex(new_month_index, fill_value = 0)
