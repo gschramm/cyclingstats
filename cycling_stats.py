@@ -328,7 +328,7 @@ def parse_fit_files(data_path, df_file, salt):
   df['year']  = df.datetime.apply(lambda x: x.year)
 
   # save data frame
-  df.to_csv(df_file)
+  df.to_csv(df_file, float_format='%.3f')
 
   return df
 #-------------------------------------------------------------------------------------------
