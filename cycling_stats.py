@@ -323,7 +323,7 @@ def parse_fit_files(data_path, df_file, salt):
                                  'descent [km]': asc_fac*descent / 1000.})
  
   # add week / month / year column
-  df['week']  = df.datetime.apply(lambda x: x.strftime('%y-%W'))
+  df['week']  = df.datetime.apply(lambda x: x.strftime('%y-%V'))
   df['month'] = df.datetime.apply(lambda x: x.strftime('%y-%m'))
   df['year']  = df.datetime.apply(lambda x: x.year)
 
