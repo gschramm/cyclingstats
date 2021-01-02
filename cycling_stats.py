@@ -93,51 +93,19 @@ def bokeh_cycling_stats(df, output_html_file):
   yearly_stats  = df.groupby('year')[['distance [km]', 'ascent [km]']].sum()
   
   #--- add entry for weeks and months without trips
-  new_week_index  = []
-  new_month_index = []
+  new_week_index = pd.date_range(df.datetime[0] - timedelta(days=df.datetime[0].weekday()), 
+                                 df.datetime[-1] - timedelta(days=(df.datetime[-1].weekday()) - 7),
+                                 freq='W').tolist()
+  new_week_index = [(x - timedelta(days=x.weekday())).strftime('%y-%V') for x in new_week_index]
 
-  for iyear, year in enumerate([str(x)[2:] for x in yearly_stats.index.values]):
-
-    year_weeks  = [int(x[3:]) for x in weekly_stats.index.values if x.startswith(year)]
-    year_months = [int(x[3:]) for x in monthly_stats.index.values if x.startswith(year)]
-
-    if yearly_stats.shape[0] == 1:
-      # we have only one year
-      if len(year_weeks) > 0:
-        minweek = min(year_weeks)
-        maxweek = max(year_weeks)
-      minmonth = min(year_months)
-      maxmonth = max(year_months)
-    else:
-      # multiple years
-      if (iyear == 0):
-        # first year in stats
-        if len(year_weeks) > 0:
-          minweek = min(year_weeks)
-          maxweek = date(2000 + int(year), 12, 28).isocalendar()[1]
-        minmonth = min(year_months)
-        maxmonth = 12
-      elif (iyear == (yearly_stats.shape[0] - 1)):
-        # last year in stats
-        if len(year_weeks) > 0:
-          minweek = 1
-          maxweek = max(year_weeks)
-        minmonth = 1
-        maxmonth = max(year_months)
-      else:
-        # middle yeats
-        if len(year_weeks) > 0:
-          minweek = 1
-          maxweek = date(2000 + int(year), 12, 28).isocalendar()[1]
-        minmonth = 1
-        maxmonth = 12
-
-    if len(year_weeks) > 0:
-      new_week_index += [year + '-' + str(x).zfill(2) for x in range(minweek, maxweek + 1)]
-    new_month_index += [year + '-' + str(x).zfill(2) for x in range(minmonth, maxmonth + 1)]
+  new_month_index = pd.date_range(df.datetime[0] - timedelta(days=df.datetime[0].day - 1), 
+                                  df.datetime[-1] - timedelta(days=(df.datetime[-1].day) - 32),
+                                  freq='M').tolist()
+  new_month_index = [x.strftime('%y-%m') for x in new_month_index]
 
   weekly_stats  = weekly_stats.reindex(new_week_index, fill_value = 0)
   monthly_stats = monthly_stats.reindex(new_month_index, fill_value = 0)
+
   #---
 
   weekly_stats['cat']  = [str(x) for x in weekly_stats.index.values]
