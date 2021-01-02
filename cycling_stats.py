@@ -7,7 +7,7 @@ import configparser
 import hashlib
 import pathlib
 from glob import glob
-from datetime import date
+from datetime import date, timedelta
 
 import geopy.distance
 import fitparse
@@ -92,7 +92,6 @@ def bokeh_cycling_stats(df, output_html_file):
   monthly_stats = df.groupby('month')[['distance [km]', 'ascent [km]']].sum()
   yearly_stats  = df.groupby('year')[['distance [km]', 'ascent [km]']].sum()
   
-
   #--- add entry for weeks and months without trips
   new_week_index  = []
   new_month_index = []
@@ -104,32 +103,37 @@ def bokeh_cycling_stats(df, output_html_file):
 
     if yearly_stats.shape[0] == 1:
       # we have only one year
-      minweek = min(year_weeks)
-      maxweek = max(year_weeks)
+      if len(year_weeks) > 0:
+        minweek = min(year_weeks)
+        maxweek = max(year_weeks)
       minmonth = min(year_months)
       maxmonth = max(year_months)
     else:
       # multiple years
       if (iyear == 0):
         # first year in stats
-        minweek = min(year_weeks)
-        maxweek = date(2000 + int(year), 12, 28).isocalendar()[1]
+        if len(year_weeks) > 0:
+          minweek = min(year_weeks)
+          maxweek = date(2000 + int(year), 12, 28).isocalendar()[1]
         minmonth = min(year_months)
         maxmonth = 12
       elif (iyear == (yearly_stats.shape[0] - 1)):
         # last year in stats
-        minweek = 1
-        maxweek = max(year_weeks)
+        if len(year_weeks) > 0:
+          minweek = 1
+          maxweek = max(year_weeks)
         minmonth = 1
         maxmonth = max(year_months)
       else:
         # middle yeats
-        minweek = 1
-        maxweek = date(2000 + int(year), 12, 28).isocalendar()[1]
+        if len(year_weeks) > 0:
+          minweek = 1
+          maxweek = date(2000 + int(year), 12, 28).isocalendar()[1]
         minmonth = 1
         maxmonth = 12
 
-    new_week_index += [year + '-' + str(x).zfill(2) for x in range(minweek, maxweek + 1)]
+    if len(year_weeks) > 0:
+      new_week_index += [year + '-' + str(x).zfill(2) for x in range(minweek, maxweek + 1)]
     new_month_index += [year + '-' + str(x).zfill(2) for x in range(minmonth, maxmonth + 1)]
 
   weekly_stats  = weekly_stats.reindex(new_week_index, fill_value = 0)
@@ -143,7 +147,8 @@ def bokeh_cycling_stats(df, output_html_file):
   p11 = figure(title ="weekly distance [km]", x_range = weekly_stats['cat'],
               tooltips = [('week', "@{week}"),('distance [km]', "@{distance [km]}")])
   p11.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = weekly_stats, line_width = 0)
-  
+  p11.xaxis.major_label_orientation = np.pi/2
+
   p12 = figure(title ="monthly distance [km]", x_range = monthly_stats['cat'],
               tooltips = [('month', "@{month}"),('distance [km]', "@{distance [km]}")])
   p12.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = monthly_stats, line_width = 0)
@@ -157,6 +162,7 @@ def bokeh_cycling_stats(df, output_html_file):
               tooltips = [('week', "@{week}"),('ascent [km]', "@{ascent [km]}")])
   p21.vbar(x = 'cat', top = 'ascent [km]', width = 0.7, source = weekly_stats, 
            fill_color = 'darkorange', line_width = 0)
+  p21.xaxis.major_label_orientation = np.pi/2
   
   p22 = figure(title ="monthly ascent [km]", x_range = monthly_stats['cat'],
               tooltips = [('month', "@{month}"),('ascent [km]', "@{ascent [km]}")])
@@ -323,7 +329,7 @@ def parse_fit_files(data_path, df_file, salt):
                                  'descent [km]': asc_fac*descent / 1000.})
  
   # add week / month / year column
-  df['week']  = df.datetime.apply(lambda x: x.strftime('%y-%V'))
+  df['week']  = df.datetime.apply(lambda x: (x - timedelta(days=x.weekday())).strftime('%y-%V'))
   df['month'] = df.datetime.apply(lambda x: x.strftime('%y-%m'))
   df['year']  = df.datetime.apply(lambda x: x.year)
 
