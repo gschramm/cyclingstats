@@ -87,30 +87,15 @@ def bokeh_cycling_stats(df, output_html_file):
   # date for tooltips
   df['date'] = [x.date().strftime("%y-%m-%d") for x in df.datetime]
 
-  # plot weekly, monthly, yearly summary
-  weekly_stats  = df.groupby('week')[['distance [km]', 'ascent [km]']].sum()
-  monthly_stats = df.groupby('month')[['distance [km]', 'ascent [km]']].sum()
-  yearly_stats  = df.groupby('year')[['distance [km]', 'ascent [km]']].sum()
-  
-  #--- add entry for weeks and months without trips
-  new_week_index = pd.date_range(df.datetime[0] - timedelta(days=df.datetime[0].weekday()), 
-                                 df.datetime[-1] - timedelta(days=(df.datetime[-1].weekday()) - 7),
-                                 freq='W').tolist()
-  new_week_index = [(x - timedelta(days=x.weekday())).strftime('%y-%V') for x in new_week_index]
+  #--- create weekly, monthly and yearly stats
 
-  new_month_index = pd.date_range(df.datetime[0] - timedelta(days=df.datetime[0].day - 1), 
-                                  df.datetime[-1] - timedelta(days=(df.datetime[-1].day) - 32),
-                                  freq='M').tolist()
-  new_month_index = [x.strftime('%y-%m') for x in new_month_index]
+  weekly_stats  = df.resample('W', on = 'datetime').sum()
+  monthly_stats = df.resample('M', on = 'datetime').sum()
+  yearly_stats  = df.resample('Y', on = 'datetime').sum()
 
-  weekly_stats  = weekly_stats.reindex(new_week_index, fill_value = 0)
-  monthly_stats = monthly_stats.reindex(new_month_index, fill_value = 0)
-
-  #---
-
-  weekly_stats['cat']  = [str(x) for x in weekly_stats.index.values]
-  monthly_stats['cat'] = [str(x) for x in monthly_stats.index.values]
-  yearly_stats['cat']  = [str(x) for x in yearly_stats.index.values]
+  weekly_stats['cat'] = [(x - timedelta(days=x.weekday())).strftime('%y-%V') for x in weekly_stats.index]
+  monthly_stats['cat'] = [x.strftime('%y-%m') for x in monthly_stats.index]
+  yearly_stats['cat']  = [str(x.year) for x in yearly_stats.index]
 
   p11 = figure(title ="weekly distance [km]", x_range = weekly_stats['cat'],
               tooltips = [('week', "@{week}"),('distance [km]', "@{distance [km]}")])
