@@ -98,32 +98,32 @@ def bokeh_cycling_stats(df, output_html_file):
   yearly_stats['cat']  = [str(x.year) for x in yearly_stats.index]
 
   p11 = figure(title ="weekly distance [km]", x_range = weekly_stats['cat'],
-              tooltips = [('week', "@{week}"),('distance [km]', "@{distance [km]}")])
+              tooltips = [('week', "@{cat}"),('distance [km]', "@{distance [km]}")])
   p11.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = weekly_stats, line_width = 0)
   p11.xaxis.major_label_orientation = np.pi/2
 
   p12 = figure(title ="monthly distance [km]", x_range = monthly_stats['cat'],
-              tooltips = [('month', "@{month}"),('distance [km]', "@{distance [km]}")])
+              tooltips = [('month', "@{cat}"),('distance [km]', "@{distance [km]}")])
   p12.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = monthly_stats, line_width = 0)
 
   p13 = figure(title ="yearly distance [km]", x_range = yearly_stats['cat'],
-              tooltips = [('year', "@{year}"),('distance [km]', "@{distance [km]}")])
+              tooltips = [('year', "@{cat}"),('distance [km]', "@{distance [km]}")])
   p13.vbar(x = 'cat', top = 'distance [km]', width = 0.7, source = yearly_stats, line_width = 0)
 
 
   p21 = figure(title ="weekly ascent [km]", x_range = weekly_stats['cat'],
-              tooltips = [('week', "@{week}"),('ascent [km]', "@{ascent [km]}")])
+              tooltips = [('week', "@{cat}"),('ascent [km]', "@{ascent [km]}")])
   p21.vbar(x = 'cat', top = 'ascent [km]', width = 0.7, source = weekly_stats, 
            fill_color = 'darkorange', line_width = 0)
   p21.xaxis.major_label_orientation = np.pi/2
   
   p22 = figure(title ="monthly ascent [km]", x_range = monthly_stats['cat'],
-              tooltips = [('month', "@{month}"),('ascent [km]', "@{ascent [km]}")])
+              tooltips = [('month', "@{cat}"),('ascent [km]', "@{ascent [km]}")])
   p22.vbar(x = 'cat', top = 'ascent [km]', width = 0.7, source = monthly_stats, 
            fill_color = 'darkorange', line_width = 0)
 
   p23 = figure(title ="yearly ascent [km]", x_range = yearly_stats['cat'],
-              tooltips = [('year', "@{year}"),('ascent [km]', "@{ascent [km]}")])
+              tooltips = [('year', "@{cat}"),('ascent [km]', "@{ascent [km]}")])
   p23.vbar(x = 'cat', top = 'ascent [km]', width = 0.7, source = yearly_stats, 
            fill_color = 'darkorange', line_width = 0)
 
