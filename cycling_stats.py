@@ -264,7 +264,10 @@ def parse_fit_files(data_path, df_file, salt):
       alt   = np.array(alt)
   
       # calculate ascend and descent
-      alt_sm   = np.convolve(alt,np.ones(33)/33, mode = 'valid')
+      if manufac == 'strava':
+        alt_sm   = np.convolve(alt,np.ones(33)/33, mode = 'valid')
+      else:
+        alt_sm   = np.convolve(alt,np.ones(7)/7, mode = 'valid')
       alt_diff = alt_sm[1:] - alt_sm[:-1]
       ascent   = alt_diff[alt_diff>=0].sum()
       descent  = alt_diff[alt_diff<0].sum()
