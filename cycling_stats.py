@@ -14,7 +14,7 @@ import fitparse
 
 from bokeh.io import output_file, show
 from bokeh.plotting import figure, ColumnDataSource
-from bokeh.models import Band
+from bokeh.models import Band, FuncTickFormatter
 from bokeh.layouts import gridplot
 from bokeh.palettes import Plasma11
 from bokeh.transform import linear_cmap
@@ -105,6 +105,17 @@ def bokeh_cycling_stats(df, output_html_file):
     monthly_stats['cat'] = [x.strftime('%y-%m') for x in monthly_stats.index]
     yearly_stats['cat'] = [str(x.year) for x in yearly_stats.index]
 
+    formatter = FuncTickFormatter(code="""
+    if (index % 4 == 0)
+    {
+        return tick;
+    }
+    else
+    {
+        return "";
+    }
+    """)
+
     p11 = figure(title="weekly distance [km]",
                  x_range=weekly_stats['cat'],
                  tooltips=[('week', "@{cat}"),
@@ -114,6 +125,7 @@ def bokeh_cycling_stats(df, output_html_file):
              width=0.7,
              source=weekly_stats,
              line_width=0)
+    p11.xaxis.formatter = formatter
     p11.xaxis.major_label_orientation = np.pi / 2
 
     p12 = figure(title="monthly distance [km]",
@@ -125,6 +137,7 @@ def bokeh_cycling_stats(df, output_html_file):
              width=0.7,
              source=monthly_stats,
              line_width=0)
+    p12.xaxis.major_label_orientation = np.pi / 2
 
     p13 = figure(title="yearly distance [km]",
                  x_range=yearly_stats['cat'],
@@ -146,12 +159,15 @@ def bokeh_cycling_stats(df, output_html_file):
              source=weekly_stats,
              fill_color='darkorange',
              line_width=0)
+    p21.xaxis.formatter = formatter
     p21.xaxis.major_label_orientation = np.pi / 2
 
     p22 = figure(title="monthly ascent [km]",
                  x_range=monthly_stats['cat'],
                  tooltips=[('month', "@{cat}"),
                            ('ascent [km]', "@{ascent [km]}")])
+    p22.xaxis.major_label_orientation = np.pi / 2
+
     p22.vbar(x='cat',
              top='ascent [km]',
              width=0.7,
