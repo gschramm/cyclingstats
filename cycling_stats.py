@@ -299,7 +299,8 @@ def plot_cycling_stats(df):
 def parse_fit_files(data_path, df_file, salt):
     fnames = sorted(
         glob(os.path.join(data_path, '20??', '*.fit')) +
-        glob(os.path.join(data_path, '20??', '*.FIT')))
+        glob(os.path.join(data_path, '20??', '*.FIT')) +
+        glob(os.path.join(data_path, '????????', '*.FIT')))
 
     if os.path.exists(df_file):
         df = pd.read_csv(df_file, index_col=0, parse_dates=['datetime'])
@@ -315,12 +316,35 @@ def parse_fit_files(data_path, df_file, salt):
 
     for fname in fnames:
         print(fname)
+
         index = hashlib.sha256(
             pathlib.Path(fname).read_bytes() +
             salt.encode('utf-8')).hexdigest()[:8]
 
         if not index in df.index:
             fitfile = fitparse.FitFile(fname)
+
+            # commuting file that was not renamed
+            if not os.path.basename(fname).startswith('20'):
+                for i, record in enumerate(fitfile.get_messages('record')):
+                    if i == 0:
+                        date = record.get('timestamp').value.strftime('%Y%m%d')
+                        break
+
+                new_filename = os.path.join(os.path.dirname(fname),
+                                            f'{date}__commute.FIT')
+
+                i = 2
+                while (os.path.exists(new_filename)):
+                    new_filename = f'_{i}'.join(os.path.splitext(new_filename))
+
+                print(f'moving {fname} {new_filename}')
+                os.rename(fname, new_filename)
+                fname = new_filename
+
+                index = hashlib.sha256(
+                    pathlib.Path(fname).read_bytes() +
+                    salt.encode('utf-8')).hexdigest()[:8]
 
             asc_fac = 1.
             mes_fields = [x.name for x in fitfile.messages[0].fields]
