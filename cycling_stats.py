@@ -14,6 +14,9 @@ from bokeh.models import Band, FuncTickFormatter
 from bokeh.layouts import gridplot
 from bokeh.palettes import Plasma11
 from bokeh.transform import linear_cmap
+from bokeh.tile_providers import get_provider
+
+import xyzservices.providers as xyz
 
 
 @dataclasses.dataclass
@@ -294,14 +297,32 @@ def bokeh_cycling_stats(df, output_html_file):
                                   low=df['ascent'].min(),
                                   high=1.1 * df['ascent'].max()))
 
-    for fig in [p00, p01, p10, p11, p20, p21, p30, p31, p40]:
+    tile_provider = get_provider(xyz.OpenStreetMap.Mapnik)
+
+    # range bounds supplied in web mercator coordinates
+    p41 = figure(x_range=(-2000000, 6000000),
+                 y_range=(-1000000, 7000000),
+                 x_axis_type="mercator",
+                 y_axis_type="mercator")
+    p41.add_tile(tile_provider)
+
+    source = ColumnDataSource(data=dict(lat=df.start_lat, lon=df.start_lon))
+
+    p41.circle(x="lon",
+               y="lat",
+               size=15,
+               fill_color="blue",
+               fill_alpha=0.8,
+               source=source)
+
+    for fig in [p00, p01, p10, p11, p20, p21, p30, p31, p40, p41]:
         fig.toolbar.active_drag = None
         fig.toolbar.active_scroll = None
         fig.toolbar.active_tap = None
 
     # group all figures in a grid
     grid = gridplot(
-        [[p00, p01], [p10, p11], [p20, p21], [p30, p31], [p40, None]],
+        [[p00, p01], [p10, p11], [p20, p21], [p30, p31], [p40, p41]],
         merge_tools=False,
         width=600,
         height=250,
