@@ -1,14 +1,10 @@
-import numpy as np
-import os
-import pandas as pd
-import matplotlib
-import matplotlib.pyplot as py
-import configparser
-import hashlib
-import pathlib
-from glob import glob
-from datetime import date, timedelta
+import dataclasses
+from pathlib import Path
+import json
+from datetime import timedelta
 
+import numpy as np
+import pandas as pd
 import geopy.distance
 import fitparse
 
@@ -19,83 +15,159 @@ from bokeh.layouts import gridplot
 from bokeh.palettes import Plasma11
 from bokeh.transform import linear_cmap
 
-#-------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------
+
+@dataclasses.dataclass
+class Ride:
+    name: str = ''
+    year: int = 1970
+    month: int = 1
+    week: int = 1
+    day: int = 1
+    hour: int = 1
+    minute: int = 0
+    distance: float = 0
+    moving_time: float = 0
+    avg_speed: float = 0
+    max_speed: float = 0
+    ascent: float = 0
+    descent: float = 0
+    start_lat: float = 0
+    start_lon: float = 0
+    end_lat: float = 0
+    end_lon: float = 0
+
+    @property
+    def __dict__(self):
+        return dataclasses.asdict(self)
+
+    def to_json(self, fname: Path):
+        with open(fname, 'w') as f:
+            json.dump(self.__dict__, f)
+
+    def from_json(self, fname: Path):
+        with open(fname, 'r') as f:
+            rdict = json.load(f)
+        self.name = rdict['name']
+        self.year = rdict['year']
+        self.month = rdict['month']
+        self.week = rdict['week']
+        self.day = rdict['day']
+        self.hour = rdict['hour']
+        self.minute = rdict['minute']
+        self.distance = rdict['distance']
+        self.moving_time = rdict['moving_time']
+        self.avg_speed = rdict['avg_speed']
+        self.max_speed = rdict['max_speed']
+        self.ascent = rdict['ascent']
+        self.descent = rdict['descent']
+        self.start_lat = rdict['start_lat']
+        self.start_lon = rdict['start_lon']
+        self.end_lat = rdict['end_lat']
+        self.end_lon = rdict['end_lon']
 
 
-def linreg(x, y):
-    """ linear regression with estimate of 95% conf interval
-      https://tomholderness.wordpress.com/2013/01/10/confidence_intervals/
-  """
+def parse_fit_file(fname: str) -> Ride:
+    fitfile = fitparse.FitFile(fname)
 
-    xx = x.copy()
-    yy = y.copy()
+    mes_fields = [x.name for x in fitfile.messages[0].fields]
 
-    for i in range(2):
-        # fit a curve to the data using a least squares 1st order polynomial fit
-        z = np.polyfit(xx, yy, 1)
-        p = np.poly1d(z)
-        fit = p(xx)
+    time = []
+    dist = []
+    speed = []
+    alt = []
+    coords = []
 
-        # predict y values of origional data using the fit
-        p_y = z[0] * xx + z[1]
+    # factor to convert from semicircles to degrees
+    semi_circ_to_deg = (180 / 2**31)
 
-        # calculate the y-error (residuals)
-        y_err = yy - p_y
+    # Get all data messages that are of type record
+    for record in fitfile.get_messages('record'):
+        field_names = [x.name for x in record.fields]
 
-        # remove outliers
-        inds = np.where(
-            np.abs(y_err) < np.abs(y_err).mean() + 3 * np.abs(y_err).std())
-        xx = x[inds]
-        yy = y[inds]
+        if 'position_long' in field_names:
+            time.append(record.get('timestamp').value)
+            alt.append(record.get('enhanced_altitude').value)
+            coords.append(
+                (record.get('position_lat').value * semi_circ_to_deg,
+                 record.get('position_long').value * semi_circ_to_deg))
 
-    # predict y values of origional data using the fit
-    p_y = z[0] * x + z[1]
-    y_err = y - p_y
+    # calculate difference between time tags
+    time = np.array(time)
+    time_delta = np.array([x.seconds for x in (time[1:] - time[:-1])])
 
-    # now calculate confidence intervals for new test x-series
-    mean_x = np.mean(x[inds])  # mean of x
-    n = len(x)  # number of samples in origional fit
-    t = 2.31  # appropriate t value (where n=9, two tailed 95%)
-    s_err = np.sum(np.power(y_err[inds],
-                            2))  # sum of the squares of the residuals
+    # calculate distances between the coordinate points
+    dist_delta = np.zeros(len(coords) - 1)
+    for i in range(len(coords) - 1):
+        dist_delta[i] = geopy.distance.distance(coords[i], coords[i + 1]).km
 
-    confs = t * np.sqrt((s_err / (n - 2)) * (1.0 / n + (np.power(
-        (x - mean_x), 2) / ((np.sum(np.power(x, 2))) - n *
-                            (np.power(mean_x, 2))))))
+    dist = dist_delta.sum()
 
-    # get lower and upper confidence limits based on predicted y and confidence intervals
-    lower = p_y - 2 * abs(confs)
-    upper = p_y + 2 * abs(confs)
+    speed = np.zeros(dist_delta.shape)
 
-    return p_y, lower, upper
+    for i in np.arange(5, speed.shape[0] - 5):
+        speed[i] = (geopy.distance.distance(coords[i + 5], coords[i - 5]).km /
+                    ((time[i + 5] - time[i - 5]).seconds / 3600))
+
+    alt = np.array(alt)
+
+    # calculate ascend and descent
+    alt_sm = np.convolve(alt, np.ones(7) / 7, mode='valid')
+    alt_diff = alt_sm[1:] - alt_sm[:-1]
+    ascent = alt_diff[alt_diff >= 0].sum()
+    descent = alt_diff[alt_diff < 0].sum()
+
+    # calculate moving time
+    t_mov = time_delta[speed > 4].sum()
+
+    avg_speed = dist / (t_mov / 3600)
+
+    ride = Ride(
+        Path(fname).stem.split('__')[1], time[0].year, time[0].month,
+        time[0].isocalendar().week,
+        time[0].day, time[0].hour, time[0].minute, dist, t_mov / 60, avg_speed,
+        speed.max(), ascent / 1000, descent / 10000, coords[0][0],
+        coords[0][1], coords[-1][0], coords[-1][1])
+
+    return ride
 
 
-#-------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------
+class RideStats:
+
+    def __init__(self, fnames: list[Path]):
+        self.fnames = fnames
+        self.rides = []
+
+        for fname in self.fnames:
+            print(fname)
+            preprocessed_fname = fname.with_suffix('.json')
+
+            if not preprocessed_fname.exists():
+                ride = parse_fit_file(str(fname))
+                ride.to_json(preprocessed_fname)
+            else:
+                ride = Ride()
+                ride.from_json(preprocessed_fname)
+
+            self.rides.append(ride)
+
+    @property
+    def df(self) -> pd.DataFrame:
+        df = pd.DataFrame(self.rides)
+        df['datetime'] = pd.to_datetime(
+            df[['year', 'month', 'day', 'hour', 'minute']])
+        df['grad'] = df['ascent'] / df['distance']
+        # date string for tooltips
+        df['date'] = [x.date().strftime("%y-%m-%d") for x in df.datetime]
+
+        return df
 
 
 def bokeh_cycling_stats(df, output_html_file):
     output_file(output_html_file,
-                title='cycling stats ' + df.datetime[-1].strftime('%Y-%m-%d'))
-
-    # calculate gradient for each ride
-    df['grad'] = df['ascent [km]'] / df['distance [km]']
-
-    # do regression
-    xreg = df['grad'].values
-    yreg = df['avg speed [km/h]'].values
-    isort = np.argsort(xreg)
-    xreg = xreg[isort]
-    yreg = yreg[isort]
-
-    reg, low, up = linreg(xreg, yreg)
-
-    # date for tooltips
-    df['date'] = [x.date().strftime("%y-%m-%d") for x in df.datetime]
+                title='cycling stats ' +
+                df.iloc[-1, :].datetime.strftime('%Y-%m-%d'))
 
     #--- create weekly, monthly and yearly stats
-
     weekly_stats = df.resample('W', on='datetime').sum()
     monthly_stats = df.resample('M', on='datetime').sum()
     yearly_stats = df.resample('Y', on='datetime').sum()
@@ -116,71 +188,68 @@ def bokeh_cycling_stats(df, output_html_file):
     }
     """)
 
-    p11 = figure(title="weekly distance [km]",
+    p00 = figure(title="weekly distance [km]",
                  x_range=weekly_stats['cat'],
                  tooltips=[('week', "@{cat}"),
-                           ('distance [km]', "@{distance [km]}")])
-    p11.vbar(x='cat',
-             top='distance [km]',
+                           ('distance [km]', "@{distance}")])
+    p00.vbar(x='cat',
+             top='distance',
              width=0.7,
              source=weekly_stats,
              line_width=0)
-    p11.xaxis.formatter = formatter
-    p11.xaxis.major_label_orientation = np.pi / 2
+    p00.xaxis.formatter = formatter
+    p00.xaxis.major_label_orientation = np.pi / 2
 
-    p12 = figure(title="monthly distance [km]",
+    p10 = figure(title="monthly distance [km]",
                  x_range=monthly_stats['cat'],
                  tooltips=[('month', "@{cat}"),
-                           ('distance [km]', "@{distance [km]}")])
-    p12.vbar(x='cat',
-             top='distance [km]',
+                           ('distance [km]', "@{distance}")])
+    p10.vbar(x='cat',
+             top='distance',
              width=0.7,
              source=monthly_stats,
              line_width=0)
-    p12.xaxis.major_label_orientation = np.pi / 2
+    p10.xaxis.major_label_orientation = np.pi / 2
 
-    p13 = figure(title="yearly distance [km]",
+    p20 = figure(title="yearly distance [km]",
                  x_range=yearly_stats['cat'],
                  tooltips=[('year', "@{cat}"),
-                           ('distance [km]', "@{distance [km]}")])
-    p13.vbar(x='cat',
-             top='distance [km]',
+                           ('distance [km]', "@{distance}")])
+    p20.vbar(x='cat',
+             top='distance',
              width=0.7,
              source=yearly_stats,
              line_width=0)
 
-    p21 = figure(title="weekly ascent [km]",
+    p01 = figure(title="weekly ascent [km]",
                  x_range=weekly_stats['cat'],
-                 tooltips=[('week', "@{cat}"),
-                           ('ascent [km]', "@{ascent [km]}")])
-    p21.vbar(x='cat',
-             top='ascent [km]',
+                 tooltips=[('week', "@{cat}"), ('ascent [km]', "@{ascent}")])
+    p01.vbar(x='cat',
+             top='ascent',
              width=0.7,
              source=weekly_stats,
              fill_color='darkorange',
              line_width=0)
-    p21.xaxis.formatter = formatter
-    p21.xaxis.major_label_orientation = np.pi / 2
+    p01.xaxis.formatter = formatter
+    p01.xaxis.major_label_orientation = np.pi / 2
 
-    p22 = figure(title="monthly ascent [km]",
+    p11 = figure(title="monthly ascent [km]",
                  x_range=monthly_stats['cat'],
-                 tooltips=[('month', "@{cat}"),
-                           ('ascent [km]', "@{ascent [km]}")])
-    p22.xaxis.major_label_orientation = np.pi / 2
+                 tooltips=[('month', "@{cat}"), ('ascent [km]', "@{ascent}")])
+    p11.xaxis.major_label_orientation = np.pi / 2
 
-    p22.vbar(x='cat',
-             top='ascent [km]',
+    p11.vbar(x='cat',
+             top='ascent',
              width=0.7,
              source=monthly_stats,
              fill_color='darkorange',
              line_width=0)
 
-    p23 = figure(title="yearly ascent [km]",
+    p21 = figure(title="yearly ascent",
                  x_range=yearly_stats['cat'],
-                 tooltips=[('year', "@{cat}"),
-                           ('ascent [km]', "@{ascent [km]}")])
-    p23.vbar(x='cat',
-             top='ascent [km]',
+                 tooltips=[('year', "@{cat}"), ('ascent [km]', "@{ascent}")])
+    p21.vbar(x='cat',
+             top='ascent',
              width=0.7,
              source=yearly_stats,
              fill_color='darkorange',
@@ -188,10 +257,10 @@ def bokeh_cycling_stats(df, output_html_file):
 
     # plot histograms about rides
     dist_histo = np.histogram(
-        df["distance [km]"],
-        bins=np.arange(np.ceil(df['distance [km]'].max() / 10) + 2) * 10 - 5)
-    p31 = figure(title='ride distance [km] histogram')
-    p31.quad(top=dist_histo[0],
+        df["distance"],
+        bins=np.arange(np.ceil(df['distance'].max() / 10) + 2) * 10 - 5)
+    p30 = figure(title='ride distance [km] histogram')
+    p30.quad(top=dist_histo[0],
              bottom=0,
              left=dist_histo[1][:-1],
              right=dist_histo[1][1:],
@@ -199,43 +268,40 @@ def bokeh_cycling_stats(df, output_html_file):
              line_width=0)
 
     mt_histo = np.histogram(
-        df["moving time [min]"],
-        bins=np.arange(np.ceil(df['moving time [min]'].max() / 20) + 2) * 20 -
-        10)
-    p32 = figure(title='ride moving time [min] histogram')
-    p32.quad(top=mt_histo[0],
+        df["moving_time"],
+        bins=np.arange(np.ceil(df['moving_time'].max() / 20) + 2) * 20 - 10)
+    p31 = figure(title='ride moving time [min] histogram')
+    p31.quad(top=mt_histo[0],
              bottom=0,
              left=mt_histo[1][:-1],
              right=mt_histo[1][1:],
              fill_color="darkseagreen",
              line_width=0)
 
-    p33 = figure(title='ride avg speed [km/h] vs (ascent / distance)',
-                 tooltips=[('distance [km]', "@{distance [km]}"),
-                           ('ascent [km]', "@{ascent [km]}"),
-                           ('moving time [min]', "@{moving time [min]}"),
-                           ('avg speed [km/h]', "@{avg speed [km/h]}"),
+    p40 = figure(title='ride avg speed [km/h] vs (ascent / distance)',
+                 tooltips=[('name', "@{name}"),
+                           ('distance [km]', "@{distance}"),
+                           ('ascent [km]', "@{ascent}"),
+                           ('moving time [min]', "@{moving_time}"),
+                           ('avg speed [km/h]', "@{avg_speed}"),
                            ('date', "@{date}")])
-    #p33.line(xreg, reg)
-    p33.line(xreg, low, color='gray')
-    p33.line(xreg, up, color='gray')
-    p33.scatter('grad',
-                'avg speed [km/h]',
+    p40.scatter('grad',
+                'avg_speed',
                 source=df,
                 size=8,
-                color=linear_cmap(field_name='distance [km]',
+                color=linear_cmap(field_name='distance',
                                   palette=Plasma11,
-                                  low=df['distance [km]'].min(),
-                                  high=1.1 * df['distance [km]'].max()))
+                                  low=df['distance'].min(),
+                                  high=1.1 * df['distance'].max()))
 
-    for fig in [p11, p21, p12, p22, p13, p23, p31, p32, p33]:
+    for fig in [p00, p01, p10, p11, p20, p21, p30, p31, p40]:
         fig.toolbar.active_drag = None
         fig.toolbar.active_scroll = None
         fig.toolbar.active_tap = None
 
     # group all figures in a grid
     grid = gridplot(
-        [[p11, p21], [p12, p22], [p13, p23], [p31, p32], [p33, None]],
+        [[p00, p01], [p10, p11], [p20, p21], [p30, p31], [p40, None]],
         merge_tools=False,
         width=600,
         height=250,
@@ -243,204 +309,9 @@ def bokeh_cycling_stats(df, output_html_file):
     show(grid)
 
 
-#-------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------
-def plot_cycling_stats(df):
-    # summary stats
-    weekly_stats = df.groupby('week')[['distance [km]', 'ascent [km]']].sum()
-    monthly_stats = df.groupby('month')[['distance [km]', 'ascent [km]']].sum()
-    yearly_stats = df.groupby('year')[['distance [km]', 'ascent [km]']].sum()
-
-    #----------------------------------------------------------------------------------------
-    # plots
-
-    fig = py.figure(figsize=(18, 4))
-    gs = matplotlib.gridspec.GridSpec(1,
-                                      3,
-                                      width_ratios=[
-                                          weekly_stats.shape[0],
-                                          monthly_stats.shape[0],
-                                          yearly_stats.shape[0]
-                                      ])
-    ax = np.array([py.subplot(x) for x in gs])
-
-    weekly_stats.plot(kind='bar',
-                      ax=ax[0],
-                      rot=25,
-                      secondary_y='ascent [km]',
-                      legend=True,
-                      width=0.75)
-    monthly_stats.plot(kind='bar',
-                       ax=ax[1],
-                       rot=25,
-                       secondary_y='ascent [km]',
-                       legend=False,
-                       width=0.75)
-    yearly_stats.plot(kind='bar',
-                      ax=ax[2],
-                      rot=25,
-                      secondary_y='ascent [km]',
-                      legend=False,
-                      width=0.75)
-
-    for axx in ax.flatten():
-        axx.set_axisbelow(True)
-        axx.grid(ls=':')
-
-    fig.tight_layout()
-
-    return fig
-
-
-#-------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------
-
-
-def parse_fit_files(data_path, df_file, salt):
-    fnames = sorted(
-        glob(os.path.join(data_path, '20??', '*.fit')) +
-        glob(os.path.join(data_path, '20??', '*.FIT')) +
-        glob(os.path.join(data_path, '????????', '*.FIT')))
-
-    if os.path.exists(df_file):
-        df = pd.read_csv(df_file, index_col=0, parse_dates=['datetime'])
-    else:
-        df = pd.DataFrame(columns=[
-            'datetime', 'distance [km]', 'moving time [min]',
-            'avg speed [km/h]', 'max speed [km/h]', 'ascent [km]',
-            'descent [km]'
-        ])
-
-    # factor to convert from semicircles to degrees
-    scf = (180 / 2**31)
-
-    for fname in fnames:
-        print(fname)
-
-        index = hashlib.sha256(
-            pathlib.Path(fname).read_bytes() +
-            salt.encode('utf-8')).hexdigest()[:8]
-
-        if not index in df.index:
-            fitfile = fitparse.FitFile(fname)
-
-            # commuting file that was not renamed
-            if not os.path.basename(fname).startswith('20'):
-                for i, record in enumerate(fitfile.get_messages('record')):
-                    if i == 0:
-                        date = record.get('timestamp').value.strftime('%Y%m%d')
-                        break
-
-                new_filename = os.path.join(os.path.dirname(fname),
-                                            f'{date}__commute.FIT')
-
-                i = 2
-                while (os.path.exists(new_filename)):
-                    new_filename = f'_{i}'.join(os.path.splitext(new_filename))
-
-                print(f'moving {fname} {new_filename}')
-                os.rename(fname, new_filename)
-                fname = new_filename
-
-                index = hashlib.sha256(
-                    pathlib.Path(fname).read_bytes() +
-                    salt.encode('utf-8')).hexdigest()[:8]
-
-            asc_fac = 1.
-            mes_fields = [x.name for x in fitfile.messages[0].fields]
-            if 'manufacturer' in mes_fields:
-                manufac = fitfile.messages[0].get('manufacturer').value
-                # the ascent recorded by a phone with strave has to be corrected
-                if manufac == 'strava':
-                    asc_fac = 0.6
-
-            time = []
-            dist = []
-            speed = []
-            alt = []
-            coords = []
-
-            has_speed = True
-
-            # Get all data messages that are of type record
-            for record in fitfile.get_messages('record'):
-                field_names = [x.name for x in record.fields]
-
-                if 'position_long' in field_names:
-                    time.append(record.get('timestamp').value)
-                    alt.append(record.get('enhanced_altitude').value)
-                    coords.append((record.get('position_lat').value * scf,
-                                   record.get('position_long').value * scf))
-
-                    #speed.append(record.get('enhanced_speed').value)
-
-            # calculate difference between time tags
-            time = np.array(time)
-            time_delta = np.array([x.seconds for x in (time[1:] - time[:-1])])
-
-            # calculate distances between the coordinate points
-            dist_delta = np.zeros(len(coords) - 1)
-            for i in range(len(coords) - 1):
-                dist_delta[i] = geopy.distance.distance(
-                    coords[i], coords[i + 1]).km
-
-            dist = np.cumsum(dist_delta)
-
-            speed = np.zeros(dist.shape)
-
-            for i in np.arange(5, speed.shape[0] - 5):
-                speed[i] = (
-                    geopy.distance.distance(coords[i + 5], coords[i - 5]).km /
-                    ((time[i + 5] - time[i - 5]).seconds / 3600))
-
-            alt = np.array(alt)
-
-            # calculate ascend and descent
-            if manufac == 'strava':
-                alt_sm = np.convolve(alt, np.ones(33) / 33, mode='valid')
-            else:
-                alt_sm = np.convolve(alt, np.ones(7) / 7, mode='valid')
-            alt_diff = alt_sm[1:] - alt_sm[:-1]
-            ascent = alt_diff[alt_diff >= 0].sum()
-            descent = alt_diff[alt_diff < 0].sum()
-
-            # calculate moving time
-            t_mov = time_delta[speed > 1].sum()
-
-            avg_speed = dist[-1] / (t_mov / 3600)
-
-            # fill data frame
-            df.loc[index] = pd.Series({
-                'datetime': time[0],
-                'distance [km]': dist[-1],
-                'moving time [min]': t_mov / 60,
-                'avg speed [km/h]': avg_speed,
-                'max speed [km/h]': speed.max(),
-                'ascent [km]': asc_fac * ascent / 1000.,
-                'descent [km]': asc_fac * descent / 1000.
-            })
-
-    # add week / month / year column
-    df['week'] = df.datetime.apply(
-        lambda x: (x - timedelta(days=x.weekday())).strftime('%y-%V'))
-    df['month'] = df.datetime.apply(lambda x: x.strftime('%y-%m'))
-    df['year'] = df.datetime.apply(lambda x: x.year)
-
-    # save data frame
-    df.to_csv(df_file, float_format='%.3f')
-
-    return df
-
-
-#-------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------
-
 if __name__ == '__main__':
-    config = configparser.ConfigParser()
-    config.read('config.ini')
-    datapath = config['default']['datapath']
-    df_file = config['default']['df_file']
-    salt = config['default']['salt']
-    df = parse_fit_files(datapath, df_file, salt)
+    rs = RideStats(
+        sorted(list(
+            Path('/home/georg/Nextcloud/cycling/data/').rglob('*.FIT'))))
 
-    bokeh_cycling_stats(df, 'cycling_stats.html')
+    bokeh_cycling_stats(rs.df, 'cycling_stats.html')
