@@ -289,10 +289,10 @@ def bokeh_cycling_stats(df, output_html_file):
                 'avg_speed',
                 source=df,
                 size=8,
-                color=linear_cmap(field_name='distance',
+                color=linear_cmap(field_name='ascent',
                                   palette=Plasma11,
-                                  low=df['distance'].min(),
-                                  high=1.1 * df['distance'].max()))
+                                  low=df['ascent'].min(),
+                                  high=1.1 * df['ascent'].max()))
 
     for fig in [p00, p01, p10, p11, p20, p21, p30, p31, p40]:
         fig.toolbar.active_drag = None
