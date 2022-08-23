@@ -89,10 +89,35 @@ def parse_fit_file(fname: str) -> Ride:
 
         if 'position_long' in field_names:
             time.append(record.get('timestamp').value)
-            alt.append(record.get('enhanced_altitude').value)
+            if 'enhanced_altitude' in field_names:
+                alt_field_name = 'enhanced_altitude'
+            else:
+                alt_field_name = 'altitude'
+            alt_unit = record.get(alt_field_name).units
+            if alt_unit == 'm':
+                alt.append(record.get(alt_field_name).value / 1000)
+            else:
+                raise NotImplementedError
+
+            if 'enhanced_speed' in field_names:
+                speed_field_name = 'enhanced_speed'
+            else:
+                speed_field_name = 'speed'
+            speed_unit = record.get(speed_field_name).units
+            if speed_unit == 'm/s':
+                speed.append(record.get(speed_field_name).value * 3.6)
+            else:
+                raise NotImplementedError
+
             coords.append(
                 (record.get('position_lat').value * semi_circ_to_deg,
                  record.get('position_long').value * semi_circ_to_deg))
+
+    sm_kernel = np.ones(15) / 15
+
+    alt = np.array(alt)
+    alt_sm = np.convolve(alt, sm_kernel, mode='same')
+    speed = np.array(speed)
 
     # calculate difference between time tags
     time = np.array(time)
@@ -105,31 +130,21 @@ def parse_fit_file(fname: str) -> Ride:
 
     dist = dist_delta.sum()
 
-    speed = np.zeros(dist_delta.shape)
-
-    for i in np.arange(5, speed.shape[0] - 5):
-        speed[i] = (geopy.distance.distance(coords[i + 5], coords[i - 5]).km /
-                    ((time[i + 5] - time[i - 5]).seconds / 3600))
-
-    alt = np.array(alt)
-
-    # calculate ascend and descent
-    alt_sm = np.convolve(alt, np.ones(7) / 7, mode='valid')
+    # calculate ascent and descent
     alt_diff = alt_sm[1:] - alt_sm[:-1]
     ascent = alt_diff[alt_diff >= 0].sum()
     descent = alt_diff[alt_diff < 0].sum()
 
     # calculate moving time
-    t_mov = time_delta[speed > 4].sum()
-
-    avg_speed = dist / (t_mov / 3600)
+    t_mov = time_delta[speed[:-1] > 4].sum() / 60
+    avg_speed = dist / (t_mov / 60)
 
     ride = Ride(
         Path(fname).stem.split('__')[1], time[0].year, time[0].month,
         time[0].isocalendar().week,
-        time[0].day, time[0].hour, time[0].minute, dist, t_mov / 60, avg_speed,
-        speed.max(), ascent / 1000, descent / 10000, coords[0][0],
-        coords[0][1], coords[-1][0], coords[-1][1])
+        time[0].day, time[0].hour, time[0].minute, dist, t_mov, avg_speed,
+        speed.max(), ascent, descent, coords[0][0], coords[0][1],
+        coords[-1][0], coords[-1][1])
 
     return ride
 
@@ -319,7 +334,7 @@ def bokeh_cycling_stats(df, output_html_file):
 
     p41.circle(x="lon",
                y="lat",
-               size=5,
+               size=6,
                fill_color="red",
                fill_alpha=0.5,
                source=source)
