@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import geopy.distance
 import fitparse
+from pyproj import Transformer
 
 from bokeh.io import output_file, show
 from bokeh.plotting import figure, ColumnDataSource
@@ -300,19 +301,28 @@ def bokeh_cycling_stats(df, output_html_file):
     tile_provider = get_provider(xyz.OpenStreetMap.Mapnik)
 
     # range bounds supplied in web mercator coordinates
-    p41 = figure(x_range=(-2000000, 6000000),
-                 y_range=(-1000000, 7000000),
+    TRAN_4326_TO_3857 = Transformer.from_crs("EPSG:4326", "EPSG:3857")
+    m2, m1 = TRAN_4326_TO_3857.transform(df.start_lat.values,
+                                         df.start_lon.values)
+    source = ColumnDataSource(data=dict(lat=m1, lon=m2))
+
+    p41 = figure(x_range=(m2.min() - 0.05 * (m2.max() - m2.min()),
+                          m2.max() + 0.05 * (m2.max() - m2.min())),
+                 y_range=(m1.min() - 0.05 * (m1.max() - m1.min()),
+                          m1.max() + 0.05 * (m1.max() - m1.min())),
                  x_axis_type="mercator",
-                 y_axis_type="mercator")
+                 y_axis_type="mercator",
+                 title='map')
     p41.add_tile(tile_provider)
 
-    source = ColumnDataSource(data=dict(lat=df.start_lat, lon=df.start_lon))
+    # for the plot on the mercator map we have to transform latitude / longitude
+    # into mercartor coordinates
 
     p41.circle(x="lon",
                y="lat",
-               size=15,
-               fill_color="blue",
-               fill_alpha=0.8,
+               size=5,
+               fill_color="red",
+               fill_alpha=0.5,
                source=source)
 
     for fig in [p00, p01, p10, p11, p20, p21, p30, p31, p40, p41]:
