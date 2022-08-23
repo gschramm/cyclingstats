@@ -1,0 +1,15 @@
+name: cyclingstats
+
+channels:
+- conda-forge
+
+dependencies:
+- numpy
+- pandas 
+- geopy
+- pyproj
+- bokeh
+- xyzservices
+- pip
+- pip:
+  - fitparse

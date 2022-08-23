@@ -1,3 +1,4 @@
+import configparser
 import dataclasses
 from pathlib import Path
 import json
@@ -72,8 +73,6 @@ class Ride:
 
 def parse_fit_file(fname: str) -> Ride:
     fitfile = fitparse.FitFile(fname)
-
-    mes_fields = [x.name for x in fitfile.messages[0].fields]
 
     time = []
     dist = []
@@ -341,8 +340,12 @@ def bokeh_cycling_stats(df, output_html_file):
 
 
 if __name__ == '__main__':
+    config = configparser.ConfigParser()
+    config.read('config.ini')
     rs = RideStats(
-        sorted(list(
-            Path('/home/georg/Nextcloud/cycling/data/').rglob('*.FIT'))))
+        sorted(
+            list(
+                Path(config['fileio']['datapath']).rglob(
+                    config['fileio']['pattern']))))
 
     bokeh_cycling_stats(rs.df, 'cycling_stats.html')
