@@ -71,82 +71,95 @@ class Ride:
         self.end_lon = rdict['end_lon']
 
 
-def parse_fit_file(fname: str) -> Ride:
-    fitfile = fitparse.FitFile(fname)
+class FitParser:
 
-    time = []
-    dist = []
-    speed = []
-    alt = []
-    coords = []
+    def __init__(self) -> None:
+        # transformer to convert from lat/lon to mercator coordinates needed for plots
+        self.transfomer = Transformer.from_crs("EPSG:4326", "EPSG:3857")
 
-    # factor to convert from semicircles to degrees
-    semi_circ_to_deg = (180 / 2**31)
+    def parse_fit_file(self, fname: str) -> Ride:
+        fitfile = fitparse.FitFile(fname)
 
-    # Get all data messages that are of type record
-    for record in fitfile.get_messages('record'):
-        field_names = [x.name for x in record.fields]
+        time = []
+        dist = []
+        speed = []
+        alt = []
+        coords = []
 
-        if 'position_long' in field_names:
-            time.append(record.get('timestamp').value)
-            if 'enhanced_altitude' in field_names:
-                alt_field_name = 'enhanced_altitude'
-            else:
-                alt_field_name = 'altitude'
-            alt_unit = record.get(alt_field_name).units
-            if alt_unit == 'm':
-                alt.append(record.get(alt_field_name).value / 1000)
-            else:
-                raise NotImplementedError
+        # factor to convert from semicircles to degrees
+        semi_circ_to_deg = (180 / 2**31)
 
-            if 'enhanced_speed' in field_names:
-                speed_field_name = 'enhanced_speed'
-            else:
-                speed_field_name = 'speed'
-            speed_unit = record.get(speed_field_name).units
-            if speed_unit == 'm/s':
-                speed.append(record.get(speed_field_name).value * 3.6)
-            else:
-                raise NotImplementedError
+        # Get all data messages that are of type record
+        for record in fitfile.get_messages('record'):
+            field_names = [x.name for x in record.fields]
 
-            coords.append(
-                (record.get('position_lat').value * semi_circ_to_deg,
-                 record.get('position_long').value * semi_circ_to_deg))
+            if 'position_long' in field_names:
+                time.append(record.get('timestamp').value)
+                if 'enhanced_altitude' in field_names:
+                    alt_field_name = 'enhanced_altitude'
+                else:
+                    alt_field_name = 'altitude'
+                alt_unit = record.get(alt_field_name).units
+                if alt_unit == 'm':
+                    alt.append(record.get(alt_field_name).value / 1000)
+                else:
+                    raise NotImplementedError
 
-    sm_kernel = np.ones(15) / 15
+                if 'enhanced_speed' in field_names:
+                    speed_field_name = 'enhanced_speed'
+                else:
+                    speed_field_name = 'speed'
+                speed_unit = record.get(speed_field_name).units
+                if speed_unit == 'm/s':
+                    speed.append(record.get(speed_field_name).value * 3.6)
+                else:
+                    raise NotImplementedError
 
-    alt = np.array(alt)
-    alt_sm = np.convolve(alt, sm_kernel, mode='same')
-    speed = np.array(speed)
+                coords.append(
+                    (record.get('position_lat').value * semi_circ_to_deg,
+                     record.get('position_long').value * semi_circ_to_deg))
 
-    # calculate difference between time tags
-    time = np.array(time)
-    time_delta = np.array([x.seconds for x in (time[1:] - time[:-1])])
+        sm_kernel = np.ones(15) / 15
 
-    # calculate distances between the coordinate points
-    dist_delta = np.zeros(len(coords) - 1)
-    for i in range(len(coords) - 1):
-        dist_delta[i] = geopy.distance.distance(coords[i], coords[i + 1]).km
+        alt = np.array(alt)
+        alt_sm = np.convolve(alt, sm_kernel, mode='same')
+        speed = np.array(speed)
 
-    dist = dist_delta.sum()
+        # calculate difference between time tags
+        time = np.array(time)
+        time_delta = np.array([x.seconds for x in (time[1:] - time[:-1])])
 
-    # calculate ascent and descent
-    alt_diff = alt_sm[1:] - alt_sm[:-1]
-    ascent = alt_diff[alt_diff >= 0].sum()
-    descent = alt_diff[alt_diff < 0].sum()
+        # calculate distances between the coordinate points
+        dist_delta = np.zeros(len(coords) - 1)
+        for i in range(len(coords) - 1):
+            dist_delta[i] = geopy.distance.distance(coords[i],
+                                                    coords[i + 1]).km
 
-    # calculate moving time
-    t_mov = time_delta[speed[:-1] > 4].sum() / 60
-    avg_speed = dist / (t_mov / 60)
+        dist = dist_delta.sum()
 
-    ride = Ride(
-        Path(fname).stem.split('__')[1], time[0].year, time[0].month,
-        time[0].isocalendar().week,
-        time[0].day, time[0].hour, time[0].minute, dist, t_mov, avg_speed,
-        speed.max(), ascent, descent, coords[0][0], coords[0][1],
-        coords[-1][0], coords[-1][1])
+        # calculate ascent and descent
+        alt_diff = alt_sm[1:] - alt_sm[:-1]
+        ascent = alt_diff[alt_diff >= 0].sum()
+        descent = alt_diff[alt_diff < 0].sum()
 
-    return ride
+        # calculate moving time
+        t_mov = time_delta[speed[:-1] > 4].sum() / 60
+        avg_speed = dist / (t_mov / 60)
+
+        # convert first lat/lon into mercator coordinates
+        start_m_lat, start_m_lon = self.transfomer.transform(
+            coords[0][0], coords[0][1])
+        end_m_lat, end_m_lon = self.transfomer.transform(
+            coords[-1][0], coords[-1][1])
+
+        ride = Ride(
+            Path(fname).stem.split('__')[1], time[0].year, time[0].month,
+            time[0].isocalendar().week,
+            time[0].day, time[0].hour, time[0].minute, dist, t_mov, avg_speed,
+            speed.max(), ascent, descent, start_m_lat, start_m_lon, end_m_lat,
+            end_m_lon)
+
+        return ride
 
 
 class RideStats:
@@ -155,12 +168,14 @@ class RideStats:
         self.fnames = fnames
         self.rides = []
 
+        parser = FitParser()
+
         for fname in self.fnames:
             print(fname)
             preprocessed_fname = fname.with_suffix('.json')
 
             if not preprocessed_fname.exists():
-                ride = parse_fit_file(str(fname))
+                ride = parser.parse_fit_file(str(fname))
                 ride.to_json(preprocessed_fname)
             else:
                 ride = Ride()
@@ -313,11 +328,8 @@ def bokeh_cycling_stats(df, output_html_file):
                                   high=1.1 * df['ascent'].max()))
 
     tile_provider = get_provider(xyz.OpenStreetMap.Mapnik)
-
-    # range bounds supplied in web mercator coordinates
-    TRAN_4326_TO_3857 = Transformer.from_crs("EPSG:4326", "EPSG:3857")
-    m2, m1 = TRAN_4326_TO_3857.transform(df.start_lat.values,
-                                         df.start_lon.values)
+    m1 = df.start_lon
+    m2 = df.start_lat
     source = ColumnDataSource(data=dict(lat=m1, lon=m2))
 
     p41 = figure(x_range=(m2.min() - 0.05 * (m2.max() - m2.min()),
@@ -328,9 +340,6 @@ def bokeh_cycling_stats(df, output_html_file):
                  y_axis_type="mercator",
                  title='map')
     p41.add_tile(tile_provider)
-
-    # for the plot on the mercator map we have to transform latitude / longitude
-    # into mercartor coordinates
 
     p41.circle(x="lon",
                y="lat",
