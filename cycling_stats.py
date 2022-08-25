@@ -171,6 +171,24 @@ class RideStats:
         parser = FitParser()
 
         for fname in self.fnames:
+            # commuting file that was not renamed
+            if not fname.stem.startswith('20'):
+                fitfile = fitparse.FitFile(str(fname))
+                for i, record in enumerate(fitfile.get_messages('record')):
+                    if i == 0:
+                        date = record.get('timestamp').value.strftime('%Y%m%d')
+                        break
+
+                new_filename = fname.parent / f'{date}__commute.FIT'
+
+                i = 2
+                while new_filename.exists():
+                    new_filename = new_filename.parent / f'{new_filename.stem}_{i}{new_filename.suffix}'
+
+                print(f'moving {fname} {new_filename}')
+                fname.rename(new_filename)
+                fname = new_filename
+
             print(fname)
             preprocessed_fname = fname.with_suffix('.json')
 
