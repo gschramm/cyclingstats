@@ -129,13 +129,7 @@ class FitParser:
         time = np.array(time)
         time_delta = np.array([x.seconds for x in (time[1:] - time[:-1])])
 
-        # calculate distances between the coordinate points
-        dist_delta = np.zeros(len(coords) - 1)
-        for i in range(len(coords) - 1):
-            dist_delta[i] = geopy.distance.distance(coords[i],
-                                                    coords[i + 1]).km
-
-        dist = dist_delta.sum()
+        dist = geopy.distance.geodesic(*coords).km
 
         # calculate ascent and descent
         alt_diff = alt_sm[1:] - alt_sm[:-1]
