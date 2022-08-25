@@ -1,9 +1,8 @@
 import configparser
-import dataclasses
 from pathlib import Path
-import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 
+import pydantic
 import numpy as np
 import pandas as pd
 import geopy.distance
@@ -12,7 +11,7 @@ from pyproj import Transformer
 
 from bokeh.io import output_file, show
 from bokeh.plotting import figure, ColumnDataSource
-from bokeh.models import Band, FuncTickFormatter
+from bokeh.models import FuncTickFormatter
 from bokeh.layouts import gridplot
 from bokeh.palettes import Plasma11
 from bokeh.transform import linear_cmap
@@ -21,148 +20,109 @@ from bokeh.tile_providers import get_provider
 import xyzservices.providers as xyz
 
 
-@dataclasses.dataclass
-class Ride:
-    name: str = ''
-    year: int = 1970
-    month: int = 1
-    week: int = 1
-    day: int = 1
-    hour: int = 1
-    minute: int = 0
-    distance: float = 0
-    moving_time: float = 0
-    avg_speed: float = 0
-    max_speed: float = 0
-    ascent: float = 0
-    descent: float = 0
-    start_lat: float = 0
-    start_lon: float = 0
-    end_lat: float = 0
-    end_lon: float = 0
-
-    @property
-    def __dict__(self):
-        return dataclasses.asdict(self)
-
-    def to_json(self, fname: Path):
-        with open(fname, 'w') as f:
-            json.dump(self.__dict__, f)
-
-    def from_json(self, fname: Path):
-        with open(fname, 'r') as f:
-            rdict = json.load(f)
-        self.name = rdict['name']
-        self.year = rdict['year']
-        self.month = rdict['month']
-        self.week = rdict['week']
-        self.day = rdict['day']
-        self.hour = rdict['hour']
-        self.minute = rdict['minute']
-        self.distance = rdict['distance']
-        self.moving_time = rdict['moving_time']
-        self.avg_speed = rdict['avg_speed']
-        self.max_speed = rdict['max_speed']
-        self.ascent = rdict['ascent']
-        self.descent = rdict['descent']
-        self.start_lat = rdict['start_lat']
-        self.start_lon = rdict['start_lon']
-        self.end_lat = rdict['end_lat']
-        self.end_lon = rdict['end_lon']
+class Ride(pydantic.BaseModel):
+    name: str
+    distance: float
+    moving_time: float
+    avg_speed: float
+    max_speed: float
+    ascent: float
+    descent: float
+    datetimes: list[datetime]
+    coordinates: list[tuple[float, float]]
+    major_version: int = 1
+    minor_version: int = 0
 
 
-class FitParser:
+def parse_fit_file(fname: str) -> Ride:
+    fitfile = fitparse.FitFile(fname)
 
-    def __init__(self) -> None:
-        # transformer to convert from lat/lon to mercator coordinates needed for plots
-        self.transfomer = Transformer.from_crs("EPSG:4326", "EPSG:3857")
+    time = []
+    dist = []
+    speed = []
+    alt = []
+    coords = []
 
-    def parse_fit_file(self, fname: str) -> Ride:
-        fitfile = fitparse.FitFile(fname)
+    # factor to convert from semicircles to degrees
+    semi_circ_to_deg = (180 / 2**31)
 
-        time = []
-        dist = []
-        speed = []
-        alt = []
-        coords = []
+    # Get all data messages that are of type record
+    for record in fitfile.get_messages('record'):
+        field_names = [x.name for x in record.fields]
 
-        # factor to convert from semicircles to degrees
-        semi_circ_to_deg = (180 / 2**31)
+        if 'position_long' in field_names:
+            time.append(record.get('timestamp').value)
+            if 'enhanced_altitude' in field_names:
+                alt_field_name = 'enhanced_altitude'
+            else:
+                alt_field_name = 'altitude'
+            alt_unit = record.get(alt_field_name).units
+            if alt_unit == 'm':
+                alt.append(record.get(alt_field_name).value / 1000)
+            else:
+                raise NotImplementedError
 
-        # Get all data messages that are of type record
-        for record in fitfile.get_messages('record'):
-            field_names = [x.name for x in record.fields]
+            if 'enhanced_speed' in field_names:
+                speed_field_name = 'enhanced_speed'
+            else:
+                speed_field_name = 'speed'
+            speed_unit = record.get(speed_field_name).units
+            if speed_unit == 'm/s':
+                speed.append(record.get(speed_field_name).value * 3.6)
+            else:
+                raise NotImplementedError
 
-            if 'position_long' in field_names:
-                time.append(record.get('timestamp').value)
-                if 'enhanced_altitude' in field_names:
-                    alt_field_name = 'enhanced_altitude'
-                else:
-                    alt_field_name = 'altitude'
-                alt_unit = record.get(alt_field_name).units
-                if alt_unit == 'm':
-                    alt.append(record.get(alt_field_name).value / 1000)
-                else:
-                    raise NotImplementedError
+            coords.append(
+                (record.get('position_lat').value * semi_circ_to_deg,
+                 record.get('position_long').value * semi_circ_to_deg))
 
-                if 'enhanced_speed' in field_names:
-                    speed_field_name = 'enhanced_speed'
-                else:
-                    speed_field_name = 'speed'
-                speed_unit = record.get(speed_field_name).units
-                if speed_unit == 'm/s':
-                    speed.append(record.get(speed_field_name).value * 3.6)
-                else:
-                    raise NotImplementedError
+    sm_kernel = np.ones(15) / 15
 
-                coords.append(
-                    (record.get('position_lat').value * semi_circ_to_deg,
-                     record.get('position_long').value * semi_circ_to_deg))
+    alt = np.array(alt)
+    alt_sm = np.convolve(alt, sm_kernel, mode='same')
+    speed = np.array(speed)
 
-        sm_kernel = np.ones(15) / 15
+    # calculate difference between time tags
+    time = np.array(time)
+    time_delta = np.array([x.seconds for x in (time[1:] - time[:-1])])
 
-        alt = np.array(alt)
-        alt_sm = np.convolve(alt, sm_kernel, mode='same')
-        speed = np.array(speed)
+    dist = geopy.distance.geodesic(*coords).km
 
-        # calculate difference between time tags
-        time = np.array(time)
-        time_delta = np.array([x.seconds for x in (time[1:] - time[:-1])])
+    # calculate ascent and descent
+    alt_diff = alt_sm[1:] - alt_sm[:-1]
+    ascent = alt_diff[alt_diff >= 0].sum()
+    descent = alt_diff[alt_diff < 0].sum()
 
-        dist = geopy.distance.geodesic(*coords).km
+    # calculate moving time
+    t_mov = time_delta[speed[:-1] > 4].sum() / 60
+    avg_speed = dist / (t_mov / 60)
 
-        # calculate ascent and descent
-        alt_diff = alt_sm[1:] - alt_sm[:-1]
-        ascent = alt_diff[alt_diff >= 0].sum()
-        descent = alt_diff[alt_diff < 0].sum()
+    # number of datapoints
+    num_p = len(coords)
+    # number of elements to store
+    num_e = min(20, len(coords))
 
-        # calculate moving time
-        t_mov = time_delta[speed[:-1] > 4].sum() / 60
-        avg_speed = dist / (t_mov / 60)
+    sub_coords = coords[::(num_p // num_e)][:num_e]
+    sub_times = time.tolist()[::(num_p // num_e)][:num_e]
 
-        # convert first lat/lon into mercator coordinates
-        start_m_lat, start_m_lon = self.transfomer.transform(
-            coords[0][0], coords[0][1])
-        end_m_lat, end_m_lon = self.transfomer.transform(
-            coords[-1][0], coords[-1][1])
+    ride = Ride(name=Path(fname).stem.split('__')[1],
+                distance=dist,
+                moving_time=t_mov,
+                avg_speed=avg_speed,
+                max_speed=speed.max(),
+                ascent=ascent,
+                descent=descent,
+                datetimes=sub_times,
+                coordinates=sub_coords)
 
-        ride = Ride(
-            Path(fname).stem.split('__')[1], time[0].year, time[0].month,
-            time[0].isocalendar().week,
-            time[0].day, time[0].hour, time[0].minute, dist, t_mov, avg_speed,
-            speed.max(), ascent, descent, start_m_lat, start_m_lon, end_m_lat,
-            end_m_lon)
-
-        return ride
+    return ride
 
 
 class RideStats:
 
-    def __init__(self, fnames: list[Path]):
+    def __init__(self, fnames: list[Path]) -> None:
         self.fnames = fnames
         self.rides = []
-
-        parser = FitParser()
 
         for fname in self.fnames:
             # commuting file that was not renamed
@@ -183,31 +143,32 @@ class RideStats:
                 fname.rename(new_filename)
                 fname = new_filename
 
-            print(fname)
             preprocessed_fname = fname.with_suffix('.json')
 
             if not preprocessed_fname.exists():
-                ride = parser.parse_fit_file(str(fname))
-                ride.to_json(preprocessed_fname)
+                print(f'parsing {fname}')
+                ride = parse_fit_file(str(fname))
+                with open(preprocessed_fname, 'w') as f:
+                    f.write(ride.json())
             else:
-                ride = Ride()
-                ride.from_json(preprocessed_fname)
+                print(f'loading {preprocessed_fname}')
+                ride = Ride.parse_file(preprocessed_fname)
 
             self.rides.append(ride)
 
     @property
     def df(self) -> pd.DataFrame:
-        df = pd.DataFrame(self.rides)
-        df['datetime'] = pd.to_datetime(
-            df[['year', 'month', 'day', 'hour', 'minute']])
-        df['grad'] = df['ascent'] / df['distance']
-        # date string for tooltips
-        df['date'] = [x.date().strftime("%y-%m-%d") for x in df.datetime]
-
+        df = pd.DataFrame([x.__dict__ for x in self.rides])
         return df
 
 
 def bokeh_cycling_stats(df, output_html_file):
+    # add a columns to the data frame that we need for stats and plotting
+    df['grad'] = df['ascent'] / df['distance']
+    # date string for tooltips
+    df['datetime'] = [x[0] for x in df.datetimes]
+    df['date'] = [x.date().strftime("%y-%m-%d") for x in df.datetime]
+
     output_file(output_html_file,
                 title='cycling stats ' +
                 df.iloc[-1, :].datetime.strftime('%Y-%m-%d'))
@@ -340,17 +301,17 @@ def bokeh_cycling_stats(df, output_html_file):
                                   high=1.1 * df['ascent'].max()))
 
     tile_provider = get_provider(xyz.OpenStreetMap.Mapnik)
-    m1 = df.start_lon
-    m2 = df.start_lat
-    source = ColumnDataSource(data=dict(lat=m1, lon=m2))
 
-    p41 = figure(x_range=(m2.min() - 0.05 * (m2.max() - m2.min()),
-                          m2.max() + 0.05 * (m2.max() - m2.min())),
-                 y_range=(m1.min() - 0.05 * (m1.max() - m1.min()),
-                          m1.max() + 0.05 * (m1.max() - m1.min())),
-                 x_axis_type="mercator",
-                 y_axis_type="mercator",
-                 title='map')
+    lat = np.array([x[0][0] for x in df.coordinates])
+    lon = np.array([x[0][1] for x in df.coordinates])
+
+    # convert first lat/lon into mercator coordinates
+    transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857")
+    mlon, mlat = transformer.transform(lat, lon)
+
+    source = ColumnDataSource(data=dict(lat=mlat, lon=mlon))
+
+    p41 = figure(x_axis_type="mercator", y_axis_type="mercator", title='map')
     p41.add_tile(tile_provider)
 
     p41.circle(x="lon",
