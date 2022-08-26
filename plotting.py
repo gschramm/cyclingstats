@@ -196,8 +196,7 @@ def bokeh_cycling_stats(df: pd.DataFrame, output_html_file: str):
              line_width=0)
 
     p40 = figure(title='ride avg speed [km/h] vs (ascent / distance)',
-                 tooltips=[('name', "@{name}"),
-                           ('distance [km]', "@{distance}"),
+                 tooltips=[('distance [km]', "@{distance}"),
                            ('ascent [km]', "@{ascent}"),
                            ('moving time [min]', "@{moving_time}"),
                            ('avg speed [km/h]', "@{avg_speed}"),
