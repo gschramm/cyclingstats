@@ -7,6 +7,7 @@ import numpy as np
 
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
+from cartopy.io.img_tiles import Stamen
 import geopy.distance
 
 from bokeh.io import output_file, show
@@ -22,6 +23,7 @@ import xyzservices.providers as xyz
 
 from utils import Ride
 
+
 def ride_to_figure(ride: Ride, zoom_level: Optional[int] = None) -> plt.figure:
     lat = [x[0] for x in ride.coordinates]
     lon = [x[1] for x in ride.coordinates]
@@ -34,6 +36,8 @@ def ride_to_figure(ride: Ride, zoom_level: Optional[int] = None) -> plt.figure:
     min_lon = min(lon) - 0.1 * dlon
     max_lon = max(lon) + 0.1 * dlon
 
+    asp = (max_lat - min_lat) / (max_lon - min_lon)
+
     diag_dist = geopy.distance.distance((min_lat, min_lon),
                                         (max_lat, max_lon)).km
 
@@ -44,13 +48,24 @@ def ride_to_figure(ride: Ride, zoom_level: Optional[int] = None) -> plt.figure:
 
     tiler = cimgt.OSM()
 
-    fig = plt.figure(figsize=(8, 8))
+    if asp > 1:
+        fig_width = 7
+        fig_height = asp * fig_width
+    else:
+        fig_height = 7
+        fig_width = fig_height / asp
+
+    fig = plt.figure(figsize=(fig_width, fig_height))
     ax = fig.add_subplot(1, 1, 1, projection=tiler.crs)
-    ax.set_extent([min_lon, min_lat, max_lon, max_lat], crs=ccrs.PlateCarree())
+    ax.set_extent([min_lon, max_lon, min_lat, max_lat], crs=ccrs.PlateCarree())
     ax.add_image(tiler, zoom_level)
     ax.plot(lon, lat, 'r.', transform=ccrs.PlateCarree())
-    ax.plot([lon[0]], [lat[0]], 'b.', transform=ccrs.PlateCarree())
-    ax.plot([lon[-1]], [lat[-1]], 'k.', transform=ccrs.PlateCarree())
+    for i, txt in enumerate(np.arange(1, len(lon) + 1)):
+        ax.text(lon[i],
+                lat[i],
+                str(txt),
+                transform=ccrs.PlateCarree(),
+                fontsize='xx-small')
     ax.set_axis_off()
 
     fig.tight_layout()
