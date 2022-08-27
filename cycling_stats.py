@@ -4,6 +4,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+import fitparse
+
 from utils import Ride, parse_fit_file
 from plotting import ride_to_figure, bokeh_cycling_stats
 
