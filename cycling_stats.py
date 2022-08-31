@@ -1,5 +1,6 @@
 import configparser
 from pathlib import Path
+from datetime import timezone
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -22,7 +23,9 @@ class RideStats:
                 fitfile = fitparse.FitFile(str(fname))
                 for i, record in enumerate(fitfile.get_messages('record')):
                     if i == 0:
-                        date = record.get('timestamp').value.strftime('%Y%m%d')
+                        dt = record.get('timestamp').value.replace(
+                            tzinfo=timezone.utc).astimezone(tz=None)
+                        date = dt.strftime('%Y%m%d')
                         break
 
                 new_filename = fname.parent / f'{date}__commute.FIT'
