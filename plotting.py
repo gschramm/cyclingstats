@@ -78,6 +78,9 @@ def bokeh_cycling_stats(df: pd.DataFrame, output_html_file: str):
     df['grad'] = df['ascent'] / df['distance']
     # date string for tooltips
     df['datetime'] = [x[0] for x in df.datetimes]
+    # drop the time zone info, since we want to classify according to local timezone
+    df['datetime'] = df['datetime'].apply(lambda x: x.replace(tzinfo=None))
+
     df['date'] = [x.date().strftime("%y-%m-%d") for x in df.datetime]
 
     output_file(output_html_file,

@@ -1,10 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timezone
+import pytz
 from pathlib import Path
 
 import pydantic
 import fitparse
 import geopy.distance
 import numpy as np
+
+from tzwhere import tzwhere
 
 
 class Ride(pydantic.BaseModel):
@@ -17,8 +20,9 @@ class Ride(pydantic.BaseModel):
     descent: float
     datetimes: list[datetime]
     coordinates: list[tuple[float, float]]
+    local_timezone: str
     major_version: int = 1
-    minor_version: int = 0
+    minor_version: int = 1
 
 
 def parse_fit_file(fname: Path) -> Ride:
@@ -92,6 +96,15 @@ def parse_fit_file(fname: Path) -> Ride:
     sub_coords = coords[::(num_p // num_e)][:num_e]
     sub_times = time.tolist()[::(num_p // num_e)][:num_e]
 
+    # convert sub_times from UTC to local time zone
+    tz = tzwhere.tzwhere(forceTZ=True)
+    loc_tz = tz.tzNameAt(*sub_coords[0], forceTZ=True)
+
+    sub_times = [
+        utc_dt.replace(tzinfo=timezone.utc).astimezone(
+            tz=pytz.timezone(loc_tz)) for utc_dt in sub_times
+    ]
+
     ride = Ride(name=fname.stem.split('__')[1],
                 distance=dist,
                 moving_time=t_mov,
@@ -100,6 +113,7 @@ def parse_fit_file(fname: Path) -> Ride:
                 ascent=ascent,
                 descent=descent,
                 datetimes=sub_times,
-                coordinates=sub_coords)
+                coordinates=sub_coords,
+                local_timezone=loc_tz)
 
     return ride

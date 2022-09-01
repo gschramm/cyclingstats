@@ -50,7 +50,8 @@ class RideStats:
                 ride = Ride.parse_file(preprocessed_fname)
 
             screenshot_fname = fname.with_suffix('.png')
-            if not screenshot_fname.exists():
+            if not screenshot_fname.exists() and (
+                    'commute' not in screenshot_fname.name):
                 fig = ride_to_figure(ride)
                 fig.savefig(screenshot_fname)
                 print(f'writing {screenshot_fname}')
