@@ -13,6 +13,7 @@ dependencies:
 - pydantic
 - cartopy
 - pyproj
+- tzwhere
 - pip
 - pip:
   - fitparse
