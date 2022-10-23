@@ -14,4 +14,4 @@ pattern = *.FIT
 ```
 
 ### Live stats
-<a href="cycling_stats.html">cycling_stats</a>
+<a href="index.html">cycling_stats</a>

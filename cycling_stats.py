@@ -74,4 +74,4 @@ if __name__ == '__main__':
                 Path(config['fileio']['datapath']).rglob(
                     config['fileio']['pattern']))))
 
-    bokeh_cycling_stats(rs.df, 'cycling_stats.html')
+    bokeh_cycling_stats(rs.df, 'index.html')
