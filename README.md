@@ -12,6 +12,3 @@ conda create env -f environment.yml
 datapath = /foo/bar/data
 pattern = *.FIT
 ```
-
-### Live stats
-<a href="index.html">cycling_stats</a>
