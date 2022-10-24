@@ -204,9 +204,10 @@ def bokeh_cycling_stats(df: pd.DataFrame, output_html_file: str):
                            ('moving time [min]', "@{moving_time}"),
                            ('avg speed [km/h]', "@{avg_speed}"),
                            ('date', "@{date}")])
+
     p40.scatter('grad',
                 'avg_speed',
-                source=df,
+                source=df.loc[df.distance > 10],
                 size=6,
                 color=linear_cmap(field_name='ascent',
                                   palette=Plasma11,
